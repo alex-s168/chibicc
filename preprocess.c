@@ -23,6 +23,9 @@
 // https://github.com/rui314/chibicc/wiki/cpp.algo.pdf
 
 #include "chibicc.h"
+#include <assert.h>
+#include <stdio.h>
+#include <string.h>
 
 typedef struct MacroParam MacroParam;
 struct MacroParam {
@@ -65,10 +68,23 @@ struct Hideset {
   char *name;
 };
 
+typedef struct Template Template;
+struct Template {
+    char *name;
+    Token *first;
+    Token *last;
+    char *var;
+
+    char **gen_for;
+    size_t gen_for_len;
+};
+
 static HashMap macros;
 static CondIncl *cond_incl;
 static HashMap pragma_once;
 static int include_next_idx;
+static Template *templates = NULL;
+static size_t templates_len = 0;
 
 static Token *preprocess2(Token *tok);
 static Macro *find_macro(Token *tok);
@@ -315,6 +331,49 @@ static CondIncl *push_cond_incl(Token *tok, bool included) {
   ci->included = included;
   cond_incl = ci;
   return ci;
+}
+
+static Template *add_template(char *name, char *var, Token *first, Token *last) {
+    templates = realloc(templates, sizeof(Template) * (templates_len + 1));
+    Template *t = &templates[templates_len ++];
+
+    t->var = var;
+    t->first = first;
+    t->last = last;
+    t->name = name;
+
+    return t;
+}
+
+static Template *find_template(char *name) {
+    for (size_t i = 0; i < templates_len; i ++) {
+        Template *t = &templates[i];
+        if (strcmp(t->name, name) == 0)
+            return t;
+    }
+    return NULL;
+}
+
+static char *templ_expand_preview(Template *templ, char *arg) {
+    size_t arg_len = strlen(arg);
+    size_t name_len = strlen(templ->name);
+
+    char * res = malloc(name_len + 3 + arg_len + 1);
+    sprintf(res, "%s___%s", templ->name, arg);
+
+    return res;
+}
+
+static char *templ_expand_for(Template *templ, char *arg) {
+    for (size_t i = 0; i < templ->gen_for_len; i ++)
+        if (strcmp(templ->gen_for[i], arg) == 0)
+            goto cat;
+
+    templ->gen_for = realloc(templ->gen_for, sizeof(char*) * (templ->gen_for_len + 1));
+    templ->gen_for[templ->gen_for_len ++] = arg;
+
+cat:
+    return templ_expand_preview(templ, arg);
 }
 
 static Macro *find_macro(Token *tok) {
@@ -845,6 +904,31 @@ static Token *preprocess2(Token *tok) {
     if (expand_macro(&tok, tok))
       continue;
 
+    if (tok->kind == TK_IDENT) {
+        char *name = strndup(tok->loc, tok->len);
+        Template *templ = find_template(name);
+        if (templ != NULL) {
+            if (tok->next->kind != TK_PUNCT || !equal(tok->next, "<"))
+                error_tok(tok, "expected opening angle brackets (template)");
+            
+            Token *type = tok->next->next;
+            if (type->kind != TK_IDENT)
+                error_tok(tok, "can only expand templates with idents");
+
+            if (tok->next->next->next->kind != TK_PUNCT || !equal(tok->next->next->next, ">"))
+                error_tok(tok, "expected closing angle brackets (template)");
+
+            char *tyname = strndup(type->loc, type->len);
+            char *expanded = templ_expand_for(templ, tyname);
+            tok->loc = expanded;
+            tok->len = strlen(expanded);
+
+            tok->next = tok->next->next->next->next; // skip < type >
+            //tok = tok->next;
+            continue;
+        }
+    }
+
     // Pass through if it is not a "#".
     if (!is_hash(tok)) {
       tok->line_delta = tok->file->line_delta;
@@ -974,6 +1058,42 @@ static Token *preprocess2(Token *tok) {
         tok = tok->next;
       } while (!tok->at_bol);
       continue;
+    }
+
+    if (equal(tok, "template")) {
+        Token *name = tok->next;
+        if (name->kind != TK_IDENT)
+            error_tok(name, "expected ident");
+
+        Token *var = name->next;
+        if (var->kind != TK_IDENT)
+            error_tok(var, "expected ident");
+
+        Token *templ_start = var->next;
+
+        char *templ_name = strndup(name->loc, name->len);
+        char *templ_var = strndup(var->loc, var->len);
+
+        tok = templ_start;
+        Token *prev = tok;
+        while (tok->kind != TK_EOF) {
+            if (is_hash(tok) && equal(tok->next, "end")) {
+                break;
+            }
+            
+            prev = tok;
+            tok = tok->next;
+        }
+
+        assert(prev->next == tok);
+        if (tok->kind == TK_EOF)
+            error_tok(tok, "expected #end");
+
+        Template *templ = add_template(templ_name, templ_var, templ_start, prev);
+        printf("Defined template %s\n", templ->name);
+        tok = tok->next->next;
+
+        continue;
     }
 
     if (equal(tok, "error"))
@@ -1194,6 +1314,100 @@ static void join_adjacent_string_literals(Token *tok) {
   }
 }
 
+static void print_tokens(Token *tok) {
+    while (tok != NULL) {
+        char *v = strndup(tok->loc, tok->len);
+
+        switch (tok->kind) {
+        case TK_EOF:
+            puts("EOF");
+            break;
+
+        case TK_NUM:
+            printf("num: %s\n", v);
+            break;
+
+        case TK_STR:
+            printf("str: %s\n", v);
+            break;
+
+        case TK_IDENT:
+            printf("ident: %s\n", v);
+            break;
+
+        case TK_PUNCT:
+            printf("punct: %s\n", v);
+            break;
+
+        case TK_PP_NUM:
+            printf("pp num: %s\n", v);
+            break;
+
+        case TK_KEYWORD:
+            printf("kw: %s\n", v);
+            break;
+        }
+
+        tok = tok->next;
+    }
+}
+
+typedef struct TokenRange TokenRange;
+struct TokenRange {
+    Token *first;
+    Token *last;
+};
+
+static TokenRange expand_template(Template *templ, char *gen_for) {
+    printf("expanding %s for %s\n", templ->name, gen_for);
+
+    char *exp_preview = templ_expand_preview(templ, gen_for);
+    size_t exp_preview_len = strlen(exp_preview);
+
+    size_t name_len = strlen(templ->name);
+    size_t var_len = strlen(templ->var);
+    size_t gen_for_len = strlen(gen_for);
+
+    Token *res = copy_token(templ->first);
+    Token *end = res;
+
+    Token *tk = templ->first;
+    while (tk != templ->last) {
+        tk = tk->next;
+        assert(tk != NULL);
+
+        Token *mut = copy_token(tk);
+
+        if (mut->kind == TK_IDENT && mut->len == var_len && memcmp(mut->loc, templ->var, var_len) == 0) {
+            mut->loc = gen_for;
+            mut->len = gen_for_len;
+        }
+        else if (mut->kind == TK_IDENT && mut->len == name_len && memcmp(mut->loc, templ->name, name_len) == 0) {
+            mut->loc = exp_preview;
+            mut->len = exp_preview_len;
+        }
+
+        end->next = mut;
+        end = mut;
+    }
+
+    return (TokenRange) {.first = res,.last = end };
+}
+
+static void expand_templates(Token *tok) {
+    for (int i = 0; i < templates_len; i ++) {
+        Template *templ = &templates[i];
+
+        for (size_t j = 0; j < templ->gen_for_len; j ++) {
+            char *gen_for = templ->gen_for[j];
+            TokenRange prepend = expand_template(templ, gen_for);          
+            prepend.last->next = copy_token(tok);
+            prepend.last->next->next = tok->next;
+            *tok = *prepend.first;
+        }
+    }
+}
+
 // Entry point function of the preprocessor.
 Token *preprocess(Token *tok) {
   tok = preprocess2(tok);
@@ -1201,8 +1415,12 @@ Token *preprocess(Token *tok) {
     error_tok(cond_incl->tok, "unterminated conditional directive");
   convert_pp_tokens(tok);
   join_adjacent_string_literals(tok);
+  expand_templates(tok);
+
+  print_tokens(tok);
 
   for (Token *t = tok; t; t = t->next)
     t->line_no += t->line_delta;
   return tok;
 }
+
