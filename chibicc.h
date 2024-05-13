@@ -86,8 +86,8 @@ struct Token {
 };
 
 
-const char *basename(char *);
-char *dirname(char *);
+const char *basename(const char *);
+char *dirname(const char *);
 char *strndup(const char *, size_t);
 
 void error(char *fmt, ...) __attribute__((format(printf, 1, 2), noreturn));

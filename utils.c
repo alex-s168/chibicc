@@ -1,14 +1,6 @@
 #include <string.h>
 #include <stdlib.h>
-#include "cwalk.h"
 #include "chibicc.h"
-
-char *dirname(char *path) {
-    size_t where;
-    cwk_path_get_dirname(path, &where);
-    path[where] = '\0';
-    return path;
-}
 
 char* strndup(const char *str, size_t len) {
     char *new = malloc((len + 1) * sizeof(char));
@@ -16,10 +8,23 @@ char* strndup(const char *str, size_t len) {
     return new;
 }
 
-const char *basename(char *path) {
-    const char *new;
-    size_t len;
-    cwk_path_get_basename(path, &new, &len);
-    (void) len;
-    return new;
+static const char *last(const char *src, char c) {
+    const char *res = strrchr(src, c);
+    if (res == NULL)
+        return src;
+    return res;
+}
+
+// string up to but not including final slash
+char *dirname(const char *path) {
+    const char *where = last(path, '/');
+    where = last(where, '\\');
+    return strndup(path, where - path);
+}
+// string after last slash 
+const char *basename(const char *path) {
+    path = last(path, '/');
+    path = last(path, '\\');
+    path ++;
+    return path;
 }
