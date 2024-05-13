@@ -32,7 +32,6 @@ char *base_file;
 static char *output_file;
 
 static StringArray input_paths;
-static StringArray tmpfiles;
 
 static void usage(int status) {
   fprintf(stderr, "chibicc [ -o <path> ] <file>\n");
@@ -365,27 +364,22 @@ static bool endswith(char *p, char *q) {
 
 // Replace file extension
 static char *replace_extn(char *tmpl, char *extn) {
-  char *filename = basename(strdup(tmpl));
+  const char *filename = basename(tmpl);
   char *dot = strrchr(filename, '.');
   if (dot)
     *dot = '\0';
   return format("%s%s", filename, extn);
 }
 
-static void cleanup(void) {
-  for (int i = 0; i < tmpfiles.len; i++)
-    unlink(tmpfiles.data[i]);
+static char* create_tmpfile() {
+  static size_t next = 0;
+  static char buf[512];
+  sprintf(buf, ".chibicc.%zu", next ++);
+  return strdup(buf);
 }
 
-static char *create_tmpfile(void) {
-  char *path = strdup("/tmp/chibicc-XXXXXX");
-  int fd = mkstemp(path);
-  if (fd == -1)
-    error("mkstemp failed: %s", strerror(errno));
-  close(fd);
-
-  strarray_push(&tmpfiles, path);
-  return path;
+static void cleanup(void) {
+  // TODO: delete temp files
 }
 
 static void run_subprocess(char **argv) {
@@ -397,16 +391,23 @@ static void run_subprocess(char **argv) {
     fprintf(stderr, "\n");
   }
 
-  if (fork() == 0) {
-    // Child process. Run a new command.
-    execvp(argv[0], argv);
-    fprintf(stderr, "exec failed: %s: %s\n", argv[0], strerror(errno));
-    _exit(1);
+  size_t len = 0;
+  for (char **counter = argv; *counter != NULL; counter ++) {
+    len += strlen(*counter);
   }
 
-  // Wait for the child process to finish.
-  int status;
-  while (wait(&status) > 0);
+  char *cmd = malloc((len + 1) * sizeof(char));
+
+  char *cmdcounter = cmd;
+  for (char **counter = argv; *counter != NULL; counter ++) {
+    size_t len = strlen(*counter);
+    memcpy(cmdcounter, *counter, len);
+    cmdcounter += len;
+  }
+  *cmdcounter = '\0';
+
+  int status = system(cmd);
+
   if (status != 0)
     exit(1);
 }
@@ -552,19 +553,11 @@ static void cc1(void) {
 
   Obj *prog = parse(tok);
 
-  // Open a temporary output buffer.
-  char *buf;
-  size_t buflen;
-  FILE *output_buf = open_memstream(&buf, &buflen);
+  FILE *output_buf = open_file(output_file);
 
   // Traverse the AST to emit assembly.
   codegen(prog, output_buf);
   fclose(output_buf);
-
-  // Write the asembly text to a file.
-  FILE *out = open_file(output_file);
-  fwrite(buf, buflen, 1, out);
-  fclose(out);
 }
 
 static void assemble(char *input, char *output) {
@@ -572,20 +565,17 @@ static void assemble(char *input, char *output) {
   run_subprocess(cmd);
 }
 
-static char *find_file(char *pattern) {
-  char *path = NULL;
-  glob_t buf = {};
-  glob(pattern, 0, NULL, &buf);
-  if (buf.gl_pathc > 0)
-    path = strdup(buf.gl_pathv[buf.gl_pathc - 1]);
-  globfree(&buf);
-  return path;
-}
-
 // Returns true if a given file exists.
 bool file_exists(char *path) {
   struct stat st;
   return !stat(path, &st);
+}
+
+// TODO: improve (was glob before)
+static char *find_file(char *pattern) {
+  if (file_exists(pattern))
+    return pattern;
+  return NULL;
 }
 
 static char *find_libpath(void) {

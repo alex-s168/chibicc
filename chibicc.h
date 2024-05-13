@@ -2,21 +2,15 @@
 #include <assert.h>
 #include <ctype.h>
 #include <errno.h>
-#include <glob.h>
-#include <libgen.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdnoreturn.h>
 #include <string.h>
-#include <strings.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <sys/wait.h>
 #include <time.h>
-#include <unistd.h>
 
 #define MAX(x, y) ((x) < (y) ? (y) : (x))
 #define MIN(x, y) ((x) < (y) ? (x) : (y))
@@ -91,9 +85,14 @@ struct Token {
   Token *origin;    // If this is expanded from a macro, the original token
 };
 
-noreturn void error(char *fmt, ...) __attribute__((format(printf, 1, 2)));
-noreturn void error_at(char *loc, char *fmt, ...) __attribute__((format(printf, 2, 3)));
-noreturn void error_tok(Token *tok, char *fmt, ...) __attribute__((format(printf, 2, 3)));
+
+const char *basename(char *);
+char *dirname(char *);
+char *strndup(const char *, size_t);
+
+void error(char *fmt, ...) __attribute__((format(printf, 1, 2), noreturn));
+void error_at(char *loc, char *fmt, ...) __attribute__((format(printf, 2, 3), noreturn));
+void error_tok(Token *tok, char *fmt, ...) __attribute__((format(printf, 2, 3), noreturn));
 void warn_tok(Token *tok, char *fmt, ...) __attribute__((format(printf, 2, 3)));
 bool equal(Token *tok, char *op);
 Token *skip(Token *tok, char *op);

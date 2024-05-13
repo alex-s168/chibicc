@@ -1028,6 +1028,9 @@ static Token *counter_macro(Token *tmpl) {
 // modification time of the current file. E.g.
 // "Fri Jul 24 01:32:50 2020"
 static Token *timestamp_macro(Token *tmpl) {
+#ifdef _WIN32
+  return new_str_token("timestamp not supported on windows!", tmpl);
+#else
   struct stat st;
   if (stat(tmpl->file->name, &st) != 0)
     return new_str_token("??? ??? ?? ??:??:?? ????", tmpl);
@@ -1036,6 +1039,7 @@ static Token *timestamp_macro(Token *tmpl) {
   ctime_r(&st.st_mtime, buf);
   buf[24] = '\0';
   return new_str_token(buf, tmpl);
+#endif
 }
 
 static Token *base_file_macro(Token *tmpl) {
