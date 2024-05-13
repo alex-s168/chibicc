@@ -34,7 +34,35 @@ static char *output_file;
 static StringArray input_paths;
 
 static void usage(int status) {
-  fprintf(stderr, "chibicc [ -o <path> ] <file>\n");
+  // TODO: fill in blanks
+  fprintf(stderr, "chibicc [ -o <path> ] <files>\n");
+  fprintf(stderr, "\n");
+  fprintf(stderr, "  -###          log invoked commands\n");
+  fprintf(stderr, "  -cc1          \n");
+  fprintf(stderr, "  --help        view this\n");
+  fprintf(stderr, "  -o <path>     specify output path\n");
+  fprintf(stderr, "  -S            output assembly\n");
+  fprintf(stderr, "  -fcommon      \n");
+  fprintf(stderr, "  -c            \n");
+  fprintf(stderr, "  -E            \n");
+  fprintf(stderr, "  -I <path>     specify include dir\n");
+  fprintf(stderr, "  -D <K>(=<V>)  define macro\n");
+  fprintf(stderr, "  -U <name>     undefine macro\n");
+  fprintf(stderr, "  -x <>         \n");
+  fprintf(stderr, "  -l <>         \n");
+  fprintf(stderr, "  -Xlinker <>   \n");
+  fprintf(stderr, "  -s            \n");
+  fprintf(stderr, "  -M            \n");
+  fprintf(stderr, "  -MF           \n");
+  fprintf(stderr, "  -MP           \n");
+  fprintf(stderr, "  -MT           \n");
+  fprintf(stderr, "  -MD           \n");
+  fprintf(stderr, "  -MQ           \n");
+  fprintf(stderr, "  -MMD          \n");
+  fprintf(stderr, "  -fpic         \n");
+  fprintf(stderr, "\n");
+  fprintf(stderr, "chibicc supports some additional arguments for compatiblity but they don't affect anything!\n");
+
   exit(status);
 }
 
@@ -393,7 +421,7 @@ static void run_subprocess(char **argv) {
 
   size_t len = 0;
   for (char **counter = argv; *counter != NULL; counter ++) {
-    len += strlen(*counter);
+    len += strlen(*counter) + 1;
   }
 
   char *cmd = malloc((len + 1) * sizeof(char));
@@ -403,6 +431,7 @@ static void run_subprocess(char **argv) {
     size_t len = strlen(*counter);
     memcpy(cmdcounter, *counter, len);
     cmdcounter += len;
+    *cmdcounter++ = ' ';
   }
   *cmdcounter = '\0';
 
