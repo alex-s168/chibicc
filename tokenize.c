@@ -1,4 +1,6 @@
 #include "chibicc.h"
+#define FILELIB_IMPL
+#include "minilibs/filelib.h"
 
 // Input file
 static File *current_file;
@@ -417,6 +419,9 @@ static bool convert_pp_int(Token *tok) {
   return true;
 }
 
+// TODO
+#define strtold(a, b) (long double) strtod(a, b)
+
 // The definition of the numeric literal at the preprocessing stage
 // is more relaxed than the definition of that at the later stages.
 // In order to handle that, a numeric literal is tokenized as a
@@ -649,28 +654,18 @@ static char *read_file(char *path) {
       return NULL;
   }
 
-  char *buf;
-  size_t buflen;
-  FILE *out = open_memstream(&buf, &buflen);
-
-  // Read the entire file.
-  for (;;) {
-    char buf2[4096];
-    int n = fread(buf2, 1, sizeof(buf2), fp);
-    if (n == 0)
-      break;
-    fwrite(buf2, 1, n, out);
-  }
+  char *buf = readFile(fp);
+  size_t buflen = strlen(buf);
 
   if (fp != stdin)
     fclose(fp);
 
-  // Make sure that the last line is properly terminated with '\n'.
-  fflush(out);
-  if (buflen == 0 || buf[buflen - 1] != '\n')
-    fputc('\n', out);
-  fputc('\0', out);
-  fclose(out);
+  if (buflen == 0 || buf[buflen - 1] != '\n') {
+    buf = realloc(buf, sizeof(char) * (buflen + 2));
+    buf[buflen] = '\n';
+    buf[buflen + 1] = '\0';
+  }
+
   return buf;
 }
 
